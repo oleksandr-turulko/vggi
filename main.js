@@ -14,13 +14,18 @@ function deg2rad(angle) {
 function Model(name) {
     this.name = name;
     this.iVertexBuffer = gl.createBuffer();
+    this.iNormalBuffer = gl.createBuffer();
     this.count = 0;
 
-    this.BufferData = function (vertices) {
+    this.BufferData = function (vertices,normals) {
 
         gl.bindBuffer(gl.ARRAY_BUFFER, this.iVertexBuffer);
         gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STREAM_DRAW);
 
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.iNormalBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(normals), gl.STREAM_DRAW);
+        console.log(normals);
+        console.log(vertices);
         this.count = vertices.length / 3;
     }
 
@@ -29,8 +34,8 @@ function Model(name) {
         gl.bindBuffer(gl.ARRAY_BUFFER, this.iVertexBuffer);
         gl.vertexAttribPointer(shProgram.iAttribVertex, 3, gl.FLOAT, false, 0, 0);
         gl.enableVertexAttribArray(shProgram.iAttribVertex);
-
-        gl.drawArrays(gl.LINE_STRIP, 0, this.count);
+        
+        gl.drawArrays(gl.TRIANGLES, 0, this.count);
     }
 }
 
@@ -63,10 +68,17 @@ function draw() {
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
     /* Set the values of the projection transformation */
-    let projection = m4.perspective(Math.PI / 8, 1, 8, 12);
+    
+    let projection = m4.orthographic(   -2,2, 
+                                        -2, 2,
+                                        0.001,1000);
 
     /* Get the view matrix from the SimpleRotator object.*/
     let modelView = spaceball.getViewMatrix();
+
+    // Перемноження координат світла на ModelView матрицю перед передачею на GPU
+    let transformedLight = m4.transformPoint(modelView, lightSource);
+    gl.uniform3fv(shProgram.iLightPosition, transformedLight);
 
     let rotateToPointZero = m4.axisRotation([0.707, 0.707, 0], 0.7);
     let translateToPointZero = m4.translation(0, 0, -10);
@@ -88,6 +100,8 @@ function draw() {
 
 function CreateSurfaceData() {
     let vertexList = [];
+    let normalList = [];
+    
     let a = Number(document.getElementById('a').value);
     let b = Number(document.getElementById('b').value);
     let n = Number(document.getElementById('n').value);
@@ -103,15 +117,38 @@ function CreateSurfaceData() {
     const countY = (u, v) => ((a + b * Math.sin(n * (u))) * Math.sin((u)) + v * Math.cos((u)))/4;
     const countZ = (u) => (b * Math.cos(n * (u)))/4;
 
+    const getNormal = (u, v) => {
+        let psi = 0.0001
+        let uv = countX(u, v)
+        let u1 = countY(u + psi, v)
+        let v1 = countZ(u, v + psi)
+        let dU = []
+        let dV = []
+        for (let i = 0; i < 3; i++) {
+          dU.push((uv[i] - u1[i]) / psi)
+          dV.push((uv[i] - v1[i]) / psi)
+        }
+        const n = m4.normalize(m4.cross(dU, dV))
+        return n
+      }
+
     for (let u = u_min; u <=  u_max; u += step_u) {
         for (let v = v_min; v <= v_max; v += step_v) {
+            normalList.push(getNormal(u,v), getNormal(u,v),getNormal(u,v));
             vertexList.push(countX(u,v), countY(u,v),countZ(u));
         }
     }
 
-    return vertexList;
-}
+    for (let v = v_min; v <= v_max; v += step_v) {
+        for (let u = u_min; u <=  u_max; u += step_u) {
+            vertexList.push(countX(u,v), countY(u,v),countZ(u));
+            normalList.push(countX(u,v), countY(u,v),countZ(u));
+        }
+    }
 
+    return {vertexList, normalList};
+}
+let lightSource = [-1.0, -10.0, -10.0];
 
 /* Initialize the WebGL context. Called from init() */
 function initGL() {
@@ -121,11 +158,14 @@ function initGL() {
     shProgram.Use();
 
     shProgram.iAttribVertex = gl.getAttribLocation(prog, "vertex");
+    shProgram.iLightPosition = gl.getUniformLocation(prog, "lightPosition");
+    shProgram.iAttribVertex = gl.getAttribLocation(prog, "vertex");
     shProgram.iModelViewProjectionMatrix = gl.getUniformLocation(prog, "ModelViewProjectionMatrix");
     shProgram.iColor = gl.getUniformLocation(prog, "color");
 
     surface = new Model('Surface');
-    surface.BufferData(CreateSurfaceData());
+    let surfData = CreateSurfaceData();
+    surface.BufferData(surfData.vertexList,surfData.normalList);
 
     gl.enable(gl.DEPTH_TEST);
 }
