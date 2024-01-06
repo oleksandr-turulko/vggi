@@ -5,6 +5,10 @@ let surface;                    // A surface model
 let shProgram;                  // A shader program
 let spaceball;                  // A SimpleRotator object that lets the user rotate the view by mouse.
 
+let Ka = 1.0;
+let Kd = 1.0;
+let Ks = 1.0;
+
 function deg2rad(angle) {
     return angle * Math.PI / 180;
 }
@@ -13,28 +17,35 @@ function deg2rad(angle) {
 // Constructor
 function Model(name) {
     this.name = name;
+    
     this.iVertexBuffer = gl.createBuffer();
     this.iNormalBuffer = gl.createBuffer();
-    this.count = 0;
 
-    this.BufferData = function (vertices,normals) {
+    this.count = 0;
+    this.countNormalization = 0;
+
+    this.BufferData = function(data) {
 
         gl.bindBuffer(gl.ARRAY_BUFFER, this.iVertexBuffer);
-        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STREAM_DRAW);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(data.vertices), gl.STREAM_DRAW);
+        this.count = data.vertices.length / 3;
 
         gl.bindBuffer(gl.ARRAY_BUFFER, this.iNormalBuffer);
-        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(normals), gl.STREAM_DRAW);
-        console.log(normals);
-        console.log(vertices);
-        this.count = vertices.length / 3;
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(data.normals), gl.STREAM_DRAW);
+        
+
     }
 
-    this.Draw = function () {
+    this.Draw = function() {
 
         gl.bindBuffer(gl.ARRAY_BUFFER, this.iVertexBuffer);
         gl.vertexAttribPointer(shProgram.iAttribVertex, 3, gl.FLOAT, false, 0, 0);
         gl.enableVertexAttribArray(shProgram.iAttribVertex);
-        
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.iNormalBuffer);
+        gl.vertexAttribPointer(shProgram.iAttribNormal, 3, gl.FLOAT, false, 0, 0);
+        gl.enableVertexAttribArray(shProgram.iAttribNormal);
+
         gl.drawArrays(gl.TRIANGLES, 0, this.count);
     }
 }
@@ -48,12 +59,32 @@ function ShaderProgram(name, program) {
 
     // Location of the attribute variable in the shader program.
     this.iAttribVertex = -1;
-    // Location of the uniform specifying a color for the primitive.
-    this.iColor = -1;
+    // Location of the attribute variable in the shader program.
+    this.iAttribNormalVertex = -1;
+
+    this.iLightPosition = -1;
+    this.iModelMatrixNormal = 1 
+
     // Location of the uniform matrix representing the combined transformation.
     this.iModelViewProjectionMatrix = -1;
 
-    this.Use = function () {
+    //Spot Light
+    this.iSpotDirection = -1;
+    this.iSpotInnerAngle = -1;
+    this.iSpotOuterAngle = -1;
+    this.iSpotPenumbraWidth = -1;
+
+    //User settings
+    this.iKa = -1;
+    this.iKd = -1;
+    this.iKs = -1;
+    this.iShininess = -1;
+
+    this.iAmbientColor = -1;
+    this.iDiffuseColor = -1;
+    this.iSpecularColor = -1;;
+
+    this.Use = function() {
         gl.useProgram(this.prog);
     }
 }
@@ -68,20 +99,13 @@ function draw() {
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
     /* Set the values of the projection transformation */
-    
-    let projection = m4.orthographic(   -2,2, 
-                                        -2, 2,
-                                        0.001,1000);
+    let projection = m4.perspective(Math.PI / 8, 1, 8, 20);
 
     /* Get the view matrix from the SimpleRotator object.*/
     let modelView = spaceball.getViewMatrix();
 
-    // Перемноження координат світла на ModelView матрицю перед передачею на GPU
-    let transformedLight = m4.transformPoint(modelView, lightSource);
-    gl.uniform3fv(shProgram.iLightPosition, transformedLight);
-
     let rotateToPointZero = m4.axisRotation([0.707, 0.707, 0], 0.7);
-    let translateToPointZero = m4.translation(0, 0, -10);
+    let translateToPointZero = m4.translation(0, 0, -14);
 
     let matAccum0 = m4.multiply(rotateToPointZero, modelView);
     let matAccum1 = m4.multiply(translateToPointZero, matAccum0);
@@ -92,16 +116,23 @@ function draw() {
 
     gl.uniformMatrix4fv(shProgram.iModelViewProjectionMatrix, false, modelViewProjection);
 
+    const normal = m4.identity();
+    m4.inverse(modelView, normal);
+    m4.transpose(normal, normal);
+
+    gl.uniformMatrix4fv(shProgram.iNormalMatrix, false, normal);
+
     /* Draw the six faces of a cube, with different colors. */
     gl.uniform4fv(shProgram.iColor, [1, 1, 0, 1]);
 
     surface.Draw();
 }
 
+
 function CreateSurfaceData() {
     let vertexList = [];
     let normalList = [];
-    
+
     let a = Number(document.getElementById('a').value);
     let b = Number(document.getElementById('b').value);
     let n = Number(document.getElementById('n').value);
@@ -116,39 +147,64 @@ function CreateSurfaceData() {
     const countX = (u, v) => ((a + b * Math.sin(n * (u))) * Math.cos((u)) - v * Math.sin((u)))/4;
     const countY = (u, v) => ((a + b * Math.sin(n * (u))) * Math.sin((u)) + v * Math.cos((u)))/4;
     const countZ = (u) => (b * Math.cos(n * (u)))/4;
+    const countVertex = (u,v) =>[countX(u,v),countY(u,v),countZ(u)];
 
-    const getNormal = (u, v) => {
-        let psi = 0.0001
-        let uv = countX(u, v)
-        let u1 = countY(u + psi, v)
-        let v1 = countZ(u, v + psi)
-        let dU = []
-        let dV = []
-        for (let i = 0; i < 3; i++) {
-          dU.push((uv[i] - u1[i]) / psi)
-          dV.push((uv[i] - v1[i]) / psi)
-        }
-        const n = m4.normalize(m4.cross(dU, dV))
-        return n
-      }
+    const countNormal =(u, v) => {
+        
+        let vertex = countVertex( u, v);
+        let U = countVertex(u, v + 0.0001);
+        let V = countVertex(u + 0.0001, v);
+    
+        let dU = [
+            (vertex[0] - U[0]) / 0.0001,
+            (vertex[1] - U[1]) / 0.0001,
+            (vertex[2] - U[2]) / 0.0001
+        ];
+        let dV = [
+            (vertex[0] - V[0]) / 0.0001,
+            (vertex[1] - V[1]) / 0.0001,
+            (vertex[2] - V[2]) / 0.0001
+        ];
+    
+        return m4.normalize(m4.cross(dU, dV));
+    }
 
     for (let u = u_min; u <=  u_max; u += step_u) {
         for (let v = v_min; v <= v_max; v += step_v) {
-            normalList.push(getNormal(u,v), getNormal(u,v),getNormal(u,v));
-            vertexList.push(countX(u,v), countY(u,v),countZ(u));
+            let vertex1 = countVertex(u, v);
+            let vertex2 = countVertex(u, v + 0.001);
+            let vertex3 = countVertex(u + 0.001, v);
+            let vertex4 = countVertex(u + 0.001, v + 0.001);
+
+            let Normal1 = countNormal(u, v);
+            let Normal2 = countNormal(u, v + 0.001);
+            let Normal3 = countNormal(u + 0.001, v);
+            let Normal4 = countNormal(u + 0.001, v + 0.001);
+
+            vertexList.push(...vertex1, ...vertex2, ...vertex3, ...vertex3, ...vertex2, ...vertex4);
+            normalList.push(...Normal1, ...Normal2, ...Normal3, ...Normal3, ...Normal2, ...Normal4);
         }
     }
 
     for (let v = v_min; v <= v_max; v += step_v) {
         for (let u = u_min; u <=  u_max; u += step_u) {
-            vertexList.push(countX(u,v), countY(u,v),countZ(u));
-            normalList.push(countX(u,v), countY(u,v),countZ(u));
+            let vertex1 = countVertex(u, v);
+            let vertex2 = countVertex(u, v + 0.001);
+            let vertex3 = countVertex(u + 0.001, v);
+            let vertex4 = countVertex(u + 0.001, v + 0.001);
+
+            let Normal1 = countNormal(u, v);
+            let Normal2 = countNormal(u, v + 0.001);
+            let Normal3 = countNormal(u + 0.001, v);
+            let Normal4 = countNormal(u + 0.001, v + 0.001);
+
+            vertexList.push(...vertex1, ...vertex2, ...vertex3, ...vertex3, ...vertex2, ...vertex4);
+            normalList.push(...Normal1, ...Normal2, ...Normal3, ...Normal3, ...Normal2, ...Normal4);
         }
     }
 
-    return {vertexList, normalList};
+    return {vertices: vertexList, normals: normalList};
 }
-let lightSource = [-1.0, -10.0, -10.0];
 
 /* Initialize the WebGL context. Called from init() */
 function initGL() {
@@ -158,14 +214,13 @@ function initGL() {
     shProgram.Use();
 
     shProgram.iAttribVertex = gl.getAttribLocation(prog, "vertex");
-    shProgram.iLightPosition = gl.getUniformLocation(prog, "lightPosition");
-    shProgram.iAttribVertex = gl.getAttribLocation(prog, "vertex");
+    shProgram.iAttribNormal = gl.getAttribLocation(prog, "normal");
     shProgram.iModelViewProjectionMatrix = gl.getUniformLocation(prog, "ModelViewProjectionMatrix");
+    shProgram.iNormalMatrix = gl.getUniformLocation(prog, "NormalMatrix");
     shProgram.iColor = gl.getUniformLocation(prog, "color");
 
     surface = new Model('Surface');
-    let surfData = CreateSurfaceData();
-    surface.BufferData(surfData.vertexList,surfData.normalList);
+    surface.BufferData(CreateSurfaceData());
 
     gl.enable(gl.DEPTH_TEST);
 }
