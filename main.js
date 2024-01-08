@@ -172,14 +172,14 @@ function CreateSurfaceData() {
     for (let u = u_min; u <=  u_max; u += step_u) {
         for (let v = v_min; v <= v_max; v += step_v) {
             let vertex1 = countVertex(u, v);
-            let vertex2 = countVertex(u, v + 0.001);
-            let vertex3 = countVertex(u + 0.001, v);
-            let vertex4 = countVertex(u + 0.001, v + 0.001);
+            let vertex2 = countVertex(u, v + 0.1);
+            let vertex3 = countVertex(u + 0.1, v);
+            let vertex4 = countVertex(u + 0.1, v + 0.1);
 
             let Normal1 = countNormal(u, v);
-            let Normal2 = countNormal(u, v + 0.001);
-            let Normal3 = countNormal(u + 0.001, v);
-            let Normal4 = countNormal(u + 0.001, v + 0.001);
+            let Normal2 = countNormal(u, v + 0.1);
+            let Normal3 = countNormal(u + 0.1, v);
+            let Normal4 = countNormal(u + 0.1, v + 0.1);
 
             vertexList.push(...vertex1, ...vertex2, ...vertex3, ...vertex3, ...vertex2, ...vertex4);
             normalList.push(...Normal1, ...Normal2, ...Normal3, ...Normal3, ...Normal2, ...Normal4);
@@ -189,14 +189,14 @@ function CreateSurfaceData() {
     for (let v = v_min; v <= v_max; v += step_v) {
         for (let u = u_min; u <=  u_max; u += step_u) {
             let vertex1 = countVertex(u, v);
-            let vertex2 = countVertex(u, v + 0.001);
-            let vertex3 = countVertex(u + 0.001, v);
-            let vertex4 = countVertex(u + 0.001, v + 0.001);
+            let vertex2 = countVertex(u, v + 0.1);
+            let vertex3 = countVertex(u + 0.1, v);
+            let vertex4 = countVertex(u + 0.1, v + 0.1);
 
             let Normal1 = countNormal(u, v);
-            let Normal2 = countNormal(u, v + 0.001);
-            let Normal3 = countNormal(u + 0.001, v);
-            let Normal4 = countNormal(u + 0.001, v + 0.001);
+            let Normal2 = countNormal(u, v + 0.1);
+            let Normal3 = countNormal(u + 0.1, v);
+            let Normal4 = countNormal(u + 0.1, v + 0.1);
 
             vertexList.push(...vertex1, ...vertex2, ...vertex3, ...vertex3, ...vertex2, ...vertex4);
             normalList.push(...Normal1, ...Normal2, ...Normal3, ...Normal3, ...Normal2, ...Normal4);
