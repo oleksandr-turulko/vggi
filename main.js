@@ -4,6 +4,8 @@ let gl;                         // The webgl context.
 let surface;                    // A surface model
 let shProgram;                  // A shader program
 let spaceball;                  // A SimpleRotator object that lets the user rotate the view by mouse.
+let lighting;
+let lightPosition = [0.0, 0.0, 0.0];
 
 let Ka = 1.0;
 let Kd = 1.0;
@@ -11,6 +13,11 @@ let Ks = 1.0;
 
 function deg2rad(angle) {
     return angle * Math.PI / 180;
+}
+function redraw() {
+    surface.BufferData(CreateSurfaceData());
+    lighting.BufferData(CreateSurfaceLight(lightPosition));
+    draw();
 }
 
 
@@ -62,19 +69,13 @@ function ShaderProgram(name, program) {
     // Location of the attribute variable in the shader program.
     this.iAttribNormalVertex = -1;
 
-    this.iLightPosition = -1;
+    this.iLightPosition = 1;
     this.iModelMatrixNormal = 1 
 
     // Location of the uniform matrix representing the combined transformation.
     this.iModelViewProjectionMatrix = -1;
 
-    //Spot Light
-    this.iSpotDirection = -1;
-    this.iSpotInnerAngle = -1;
-    this.iSpotOuterAngle = -1;
-    this.iSpotPenumbraWidth = -1;
-
-    //User settings
+        //User settings
     this.iKa = -1;
     this.iKd = -1;
     this.iKs = -1;
@@ -83,6 +84,8 @@ function ShaderProgram(name, program) {
     this.iAmbientColor = -1;
     this.iDiffuseColor = -1;
     this.iSpecularColor = -1;;
+
+    this.iLighting = -1;
 
     this.Use = function() {
         gl.useProgram(this.prog);
@@ -99,7 +102,9 @@ function draw() {
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
     /* Set the values of the projection transformation */
-    let projection = m4.perspective(Math.PI / 8, 1, 8, 20);
+    let projection = m4.orthographic(-2, 2, 
+                                     -2, 2, 
+                                      0, 16);
 
     /* Get the view matrix from the SimpleRotator object.*/
     let modelView = spaceball.getViewMatrix();
@@ -122,10 +127,12 @@ function draw() {
 
     gl.uniformMatrix4fv(shProgram.iNormalMatrix, false, normal);
 
-    /* Draw the six faces of a cube, with different colors. */
     gl.uniform4fv(shProgram.iColor, [1, 1, 0, 1]);
 
+
     surface.Draw();
+    // Draw the light sphere without modelView transformation
+    lighting.Draw();
 }
 
 
@@ -172,14 +179,14 @@ function CreateSurfaceData() {
     for (let u = u_min; u <=  u_max; u += step_u) {
         for (let v = v_min; v <= v_max; v += step_v) {
             let vertex1 = countVertex(u, v);
-            let vertex2 = countVertex(u, v + 0.001);
-            let vertex3 = countVertex(u + 0.001, v);
-            let vertex4 = countVertex(u + 0.001, v + 0.001);
+            let vertex2 = countVertex(u, v + 0.1);
+            let vertex3 = countVertex(u + 0.1, v);
+            let vertex4 = countVertex(u + 0.1, v + 0.1);
 
             let Normal1 = countNormal(u, v);
-            let Normal2 = countNormal(u, v + 0.001);
-            let Normal3 = countNormal(u + 0.001, v);
-            let Normal4 = countNormal(u + 0.001, v + 0.001);
+            let Normal2 = countNormal(u, v + 0.1);
+            let Normal3 = countNormal(u + 0.1, v);
+            let Normal4 = countNormal(u + 0.1, v + 0.1);
 
             vertexList.push(...vertex1, ...vertex2, ...vertex3, ...vertex3, ...vertex2, ...vertex4);
             normalList.push(...Normal1, ...Normal2, ...Normal3, ...Normal3, ...Normal2, ...Normal4);
@@ -189,14 +196,14 @@ function CreateSurfaceData() {
     for (let v = v_min; v <= v_max; v += step_v) {
         for (let u = u_min; u <=  u_max; u += step_u) {
             let vertex1 = countVertex(u, v);
-            let vertex2 = countVertex(u, v + 0.001);
-            let vertex3 = countVertex(u + 0.001, v);
-            let vertex4 = countVertex(u + 0.001, v + 0.001);
+            let vertex2 = countVertex(u, v + 0.1);
+            let vertex3 = countVertex(u + 0.1, v);
+            let vertex4 = countVertex(u + 0.1, v + 0.1);
 
             let Normal1 = countNormal(u, v);
-            let Normal2 = countNormal(u, v + 0.001);
-            let Normal3 = countNormal(u + 0.001, v);
-            let Normal4 = countNormal(u + 0.001, v + 0.001);
+            let Normal2 = countNormal(u, v + 0.1);
+            let Normal3 = countNormal(u + 0.1, v);
+            let Normal4 = countNormal(u + 0.1, v + 0.1);
 
             vertexList.push(...vertex1, ...vertex2, ...vertex3, ...vertex3, ...vertex2, ...vertex4);
             normalList.push(...Normal1, ...Normal2, ...Normal3, ...Normal3, ...Normal2, ...Normal4);
@@ -205,6 +212,59 @@ function CreateSurfaceData() {
 
     return {vertices: vertexList, normals: normalList};
 }
+
+function animate() {
+    movePointOnElipse(1.8, 1.2, 0.4); // Рух точки по колу з радіусом 2.0 та швидкістю 2.0
+    requestAnimationFrame(animate);
+}
+
+function movePointOnElipse(a,b , speed) {
+    let time = performance.now() * 0.001; 
+    let phi = time * speed; 
+
+    let lightPosition = [
+        a * Math.cos(phi),
+        b * Math.sin(phi),
+        0.0
+    ];
+
+    surface.Draw();
+    lighting.BufferData(CreateSurfaceLight(lightPosition));
+    gl.uniform3fv(shProgram.iLightPosition, lightPosition);
+    lighting.Draw();
+}
+
+function CreateSurfaceLight(lightPosition) {
+    let radius = 0.1;
+
+    let CalculateVertexSphere = (theta, phi, radius) => {
+        let x = radius * Math.sin(theta) * Math.cos(phi);
+        let y = radius * Math.sin(theta) * Math.sin(phi);
+        let z = radius * Math.cos(theta);
+        return [x, y, z];
+    }
+    let vertexList = [];
+
+    for (let phi = 0; phi <= Math.PI; phi += 0.1) {
+        for (let theta = 0; theta <= 2 * Math.PI; theta += 0.1) {
+            let vertex1 = CalculateVertexSphere(theta, phi, radius);
+            let vertex2 = CalculateVertexSphere(theta, phi + 0.1, radius);
+            let vertex3 = CalculateVertexSphere(theta + 0.1, phi, radius);
+            let vertex4 = CalculateVertexSphere(theta + 0.1, phi + 0.1, radius);
+
+            vertexList.push(...vertex1, ...vertex2, ...vertex3, ...vertex3, ...vertex2, ...vertex4);
+        }
+    }
+
+    for (let i = 0; i < vertexList.length; i += 3) {
+        vertexList[i] += lightPosition[0];
+        vertexList[i + 1] += lightPosition[1];
+        vertexList[i + 2] += lightPosition[2];
+    }
+
+    return { vertices: vertexList, normals: vertexList};
+}
+
 
 /* Initialize the WebGL context. Called from init() */
 function initGL() {
@@ -218,9 +278,14 @@ function initGL() {
     shProgram.iModelViewProjectionMatrix = gl.getUniformLocation(prog, "ModelViewProjectionMatrix");
     shProgram.iNormalMatrix = gl.getUniformLocation(prog, "NormalMatrix");
     shProgram.iColor = gl.getUniformLocation(prog, "color");
+    shProgram.iLightPosition = gl.getUniformLocation(prog, "lightPosition");
+    shProgram.iLighting = gl.getUniformLocation(prog, "lighting");
 
     surface = new Model('Surface');
     surface.BufferData(CreateSurfaceData());
+
+    lighting = new Model();
+    lighting.BufferData(CreateSurfaceLight(lightPosition));
 
     gl.enable(gl.DEPTH_TEST);
 }
@@ -287,4 +352,5 @@ function init() {
     spaceball = new TrackballRotator(canvas, draw, 0);
 
     draw();
+    animate();
 }
