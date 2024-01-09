@@ -74,7 +74,6 @@ function ShaderProgram(name, program) {
 
     // Location of the uniform matrix representing the combined transformation.
     this.iModelViewProjectionMatrix = -1;
-
         //User settings
     this.iKa = -1;
     this.iKd = -1;
@@ -83,7 +82,6 @@ function ShaderProgram(name, program) {
 
     this.iAmbientColor = -1;
     this.iDiffuseColor = -1;
-    this.iSpecularColor = -1;;
 
     this.iLighting = -1;
 
@@ -98,7 +96,7 @@ function ShaderProgram(name, program) {
  * way to draw with WebGL.  Here, the geometry is so simple that it doesn't matter.)
  */
 function draw() {
-    gl.clearColor(0, 0, 0, 1);
+    gl.clearColor(1, 0, 0, 1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
     /* Set the values of the projection transformation */
@@ -128,7 +126,6 @@ function draw() {
     gl.uniformMatrix4fv(shProgram.iNormalMatrix, false, normal);
 
     gl.uniform4fv(shProgram.iColor, [1, 1, 0, 1]);
-
 
     surface.Draw();
     // Draw the light sphere without modelView transformation
@@ -219,18 +216,18 @@ function animate() {
 }
 
 function movePointOnElipse(a,b , speed) {
-    let time = performance.now() * 0.001; 
+    let time = performance.now() * 0.005; 
     let phi = time * speed; 
 
-    let lightPosition = [
+    let newLightPosition = [
         a * Math.cos(phi),
         b * Math.sin(phi),
-        0.0
+        0
     ];
 
     surface.Draw();
-    lighting.BufferData(CreateSurfaceLight(lightPosition));
-    gl.uniform3fv(shProgram.iLightPosition, lightPosition);
+    lighting.BufferData(CreateSurfaceLight(newLightPosition));
+    gl.uniform3fv(shProgram.iLightPosition, newLightPosition);
     lighting.Draw();
 }
 
@@ -238,9 +235,9 @@ function CreateSurfaceLight(lightPosition) {
     let radius = 0.1;
 
     let CalculateVertexSphere = (theta, phi, radius) => {
-        let x = radius * Math.sin(theta) * Math.cos(phi);
-        let y = radius * Math.sin(theta) * Math.sin(phi);
-        let z = radius * Math.cos(theta);
+        let x = lightPosition[0] + radius * Math.sin(theta) * Math.cos(phi);
+        let y = lightPosition[1] + radius * Math.sin(theta) * Math.sin(phi);
+        let z = lightPosition[2] + radius * Math.cos(theta);
         return [x, y, z];
     }
     let vertexList = [];
@@ -255,13 +252,6 @@ function CreateSurfaceLight(lightPosition) {
             vertexList.push(...vertex1, ...vertex2, ...vertex3, ...vertex3, ...vertex2, ...vertex4);
         }
     }
-
-    for (let i = 0; i < vertexList.length; i += 3) {
-        vertexList[i] += lightPosition[0];
-        vertexList[i + 1] += lightPosition[1];
-        vertexList[i + 2] += lightPosition[2];
-    }
-
     return { vertices: vertexList, normals: vertexList};
 }
 
@@ -277,6 +267,7 @@ function initGL() {
     shProgram.iAttribNormal = gl.getAttribLocation(prog, "normal");
     shProgram.iModelViewProjectionMatrix = gl.getUniformLocation(prog, "ModelViewProjectionMatrix");
     shProgram.iNormalMatrix = gl.getUniformLocation(prog, "NormalMatrix");
+    shProgram.iTranslationMatrix = gl.getUniformLocation(prog, "TranslationMatrix");
     shProgram.iColor = gl.getUniformLocation(prog, "color");
     shProgram.iLightPosition = gl.getUniformLocation(prog, "lightPosition");
     shProgram.iLighting = gl.getUniformLocation(prog, "lighting");
