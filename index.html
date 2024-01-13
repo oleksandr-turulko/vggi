@@ -5,7 +5,7 @@
     <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
 
 
-    <title>PA#2</title>
+    <title>CGW</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.3.1/dist/css/bootstrap.min.css"
         integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T" crossorigin="anonymous">
     <style>
@@ -33,32 +33,14 @@
         </div>
     </div>
     <div style="padding-left: 1rem;">
-        <label for="a">A:</label>
-        <input class="input" type="number" value="2" step="0.01" id="a" />
-        <br>
-        <label for="a">B:</label>
-        <input class="input" type="number" value="2" step="0.01" id="b" />
-        <br>
-        <label for="a">N:</label>
-        <input class="input" type="number" value="1" step="0.01" id="n" />
-        <br>
-        <label for="a">Min u:</label>
-        <input class="input" type="number" value="0" step="0.01" id="u_min" />
-        <label for="a">Max u (2*PI):</label>
-        <input class="input" type="number" value="6.283" step="0.01" id="u_max" />
-        <br>
-        <label for="a">Step u:</label>
-        <input class="input" type="number" value="0.1" step="0.001" id="step_u" />
-        <br>
-        <label for="a">Min v:</label>
-        <input class="input" type="number" value="0" step="0.01" id="v_min" />
-        <label for="a">Max v:</label>
-        <input class="input" type="number" value="2" step="0.01" id="v_max" />
-        <br>
-        <label for="a">Step v:</label>
-        <input class="input" type="number" value="0.1" step="0.001" id="step_v" />
-        <br>
-        <button class="btn btn-success"  onclick="init()" name="a" id="build"> build </button>
+       <div style=" width: 300px;">
+            <p>
+                GCW
+            </p>
+            <label for="a">Angle:</label>
+            <input class="input inp-range" type="range" min="0" value="180" max="360" step="1" id="angle" onchange="updateAngle(event)" oninput="this.nextElementSibling.value = this.value"/><output></output>
+        </div>
+        
     </div>
 
 </body>

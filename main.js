@@ -1,52 +1,75 @@
 'use strict';
 
 let gl;                         // The webgl context.
-let surface;                    // A surface model
+let surface;          // A surface model and lighting model
 let shProgram;                  // A shader program
 let spaceball;                  // A SimpleRotator object that lets the user rotate the view by mouse.
+let sphere;
+let userPoint;
+let sphereCenter;
+let angle;
 
-let Ka = 1.0;
-let Kd = 1.0;
-let Ks = 1.0;
+let a = 2;
+let b = 2;
+let n = 1;
+let u1, v1;
+let u_min = 0;
+let u_max = Math.PI * 2;
+let v_min = 0;
+let v_max = 2;
+let step_v = 0.1;
+let step_u = 0.1;
 
-function deg2rad(angle) {
-    return angle * Math.PI / 180;
-}
+const countX = (u, v) => ((a + b * Math.sin(n * (u))) * Math.cos((u)) - v * Math.sin((u))) / 4;
+const countY = (u, v) => ((a + b * Math.sin(n * (u))) * Math.sin((u)) + v * Math.cos((u))) / 4;
+const countZ = (u) => (b * Math.cos(n * (u))) / 4;
+const countVertex = (u, v) => [countX(u, v), countY(u, v), countZ(u)];
 
 
 // Constructor
 function Model(name) {
     this.name = name;
-    
+
     this.iVertexBuffer = gl.createBuffer();
-    this.iNormalBuffer = gl.createBuffer();
+    this.iVertexTextureBuffer = gl.createBuffer();
 
     this.count = 0;
-    this.countNormalization = 0;
+    this.textureCount = 0;
 
-    this.BufferData = function(data) {
+    this.BufferData = function (data) {
 
         gl.bindBuffer(gl.ARRAY_BUFFER, this.iVertexBuffer);
         gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(data.vertices), gl.STREAM_DRAW);
         this.count = data.vertices.length / 3;
 
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.iNormalBuffer);
-        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(data.normals), gl.STREAM_DRAW);
-        
-
     }
 
-    this.Draw = function() {
+    this.TextureBufferData = function (vertices) {
 
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.iVertexTextureBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STREAM_DRAW);
+
+        this.textureCount = vertices.length / 2;
+    }
+
+    this.Draw = function () {
         gl.bindBuffer(gl.ARRAY_BUFFER, this.iVertexBuffer);
         gl.vertexAttribPointer(shProgram.iAttribVertex, 3, gl.FLOAT, false, 0, 0);
         gl.enableVertexAttribArray(shProgram.iAttribVertex);
 
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.iNormalBuffer);
-        gl.vertexAttribPointer(shProgram.iAttribNormal, 3, gl.FLOAT, false, 0, 0);
-        gl.enableVertexAttribArray(shProgram.iAttribNormal);
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.iVertexTextureBuffer);
+        gl.vertexAttribPointer(shProgram.iAttribVertexTexture, 2, gl.FLOAT, false, 0, 0);
+        gl.enableVertexAttribArray(shProgram.iAttribVertexTexture);
 
-        gl.drawArrays(gl.TRIANGLES, 0, this.count);
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, this.count);
+    }
+
+
+    this.DrawSphere = function () {
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.iVertexBuffer);
+        gl.vertexAttribPointer(shProgram.iAttribVertex, 3, gl.FLOAT, false, 0, 0);
+        gl.enableVertexAttribArray(shProgram.iAttribVertex);
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, this.count);
     }
 }
 
@@ -60,31 +83,15 @@ function ShaderProgram(name, program) {
     // Location of the attribute variable in the shader program.
     this.iAttribVertex = -1;
     // Location of the attribute variable in the shader program.
-    this.iAttribNormalVertex = -1;
-
-    this.iLightPosition = -1;
-    this.iModelMatrixNormal = 1 
-
-    // Location of the uniform matrix representing the combined transformation.
+    this.iAttribVertexTexture = -1;
     this.iModelViewProjectionMatrix = -1;
 
-    //Spot Light
-    this.iSpotDirection = -1;
-    this.iSpotInnerAngle = -1;
-    this.iSpotOuterAngle = -1;
-    this.iSpotPenumbraWidth = -1;
+    this.iTMU = -1;
+    this.iUserPoint = -1;
+    this.iAngle = 0;
+    this.iTranslateSphere = -1;
 
-    //User settings
-    this.iKa = -1;
-    this.iKd = -1;
-    this.iKs = -1;
-    this.iShininess = -1;
-
-    this.iAmbientColor = -1;
-    this.iDiffuseColor = -1;
-    this.iSpecularColor = -1;;
-
-    this.Use = function() {
+    this.Use = function () {
         gl.useProgram(this.prog);
     }
 }
@@ -95,116 +102,143 @@ function ShaderProgram(name, program) {
  * way to draw with WebGL.  Here, the geometry is so simple that it doesn't matter.)
  */
 function draw() {
-    gl.clearColor(0, 0, 0, 1);
+    gl.clearColor(1., 1., 1., 1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-    /* Set the values of the projection transformation */
-    let projection = m4.perspective(Math.PI / 8, 1, 8, 20);
+    let projection = m4.orthographic(-5, 5, -5, 5, 0, 25);
 
-    /* Get the view matrix from the SimpleRotator object.*/
     let modelView = spaceball.getViewMatrix();
 
     let rotateToPointZero = m4.axisRotation([0.707, 0.707, 0], 0.7);
-    let translateToPointZero = m4.translation(0, 0, -14);
+    let translateToPointZero = m4.translation(0, 0, -15);
 
     let matAccum0 = m4.multiply(rotateToPointZero, modelView);
     let matAccum1 = m4.multiply(translateToPointZero, matAccum0);
 
-    /* Multiply the projection matrix times the modelview matrix to give the
-       combined transformation matrix, and send that to the shader program. */
     let modelViewProjection = m4.multiply(projection, matAccum1);
 
     gl.uniformMatrix4fv(shProgram.iModelViewProjectionMatrix, false, modelViewProjection);
 
-    const normal = m4.identity();
-    m4.inverse(modelView, normal);
-    m4.transpose(normal, normal);
+    gl.uniform1i(shProgram.iTMU, 0);
+    gl.uniform2fv(shProgram.iUserPoint, [userPoint.u, userPoint.v]);
+    gl.uniform1f(shProgram.iAngle, angle);
+    gl.uniform1f(shProgram.iB, -1);
 
-    gl.uniformMatrix4fv(shProgram.iNormalMatrix, false, normal);
-
-    /* Draw the six faces of a cube, with different colors. */
-    gl.uniform4fv(shProgram.iColor, [1, 1, 0, 1]);
-
+    gl.uniform3fv(shProgram.iTranslateSphere, [-0., -0., -0.])
     surface.Draw();
-}
 
+    let translate = countVertex(userPoint.u, userPoint.v)
+    gl.uniform3fv(shProgram.iTranslateSphere, [translate[0], translate[1], translate[2]])
+    gl.uniform1f(shProgram.iB, 1);
+    sphere.DrawSphere();
+
+}
 
 function CreateSurfaceData() {
     let vertexList = [];
-    let normalList = [];
 
-    let a = Number(document.getElementById('a').value);
-    let b = Number(document.getElementById('b').value);
-    let n = Number(document.getElementById('n').value);
-
-    let u_min = Number(document.getElementById('u_min').value);
-    let u_max = Number(document.getElementById('u_max').value);
-    let v_min = Number(document.getElementById('v_min').value);
-    let v_max = Number(document.getElementById('v_max').value);
-    let step_v = Number(document.getElementById('step_v').value);
-    let step_u = Number(document.getElementById('step_u').value);
-
-    const countX = (u, v) => ((a + b * Math.sin(n * (u))) * Math.cos((u)) - v * Math.sin((u)))/4;
-    const countY = (u, v) => ((a + b * Math.sin(n * (u))) * Math.sin((u)) + v * Math.cos((u)))/4;
-    const countZ = (u) => (b * Math.cos(n * (u)))/4;
-    const countVertex = (u,v) =>[countX(u,v),countY(u,v),countZ(u)];
-
-    const countNormal =(u, v) => {
-        
-        let vertex = countVertex( u, v);
-        let U = countVertex(u, v + 0.0001);
-        let V = countVertex(u + 0.0001, v);
-    
-        let dU = [
-            (vertex[0] - U[0]) / 0.0001,
-            (vertex[1] - U[1]) / 0.0001,
-            (vertex[2] - U[2]) / 0.0001
-        ];
-        let dV = [
-            (vertex[0] - V[0]) / 0.0001,
-            (vertex[1] - V[1]) / 0.0001,
-            (vertex[2] - V[2]) / 0.0001
-        ];
-    
-        return m4.normalize(m4.cross(dU, dV));
-    }
-
-    for (let u = u_min; u <=  u_max; u += step_u) {
+    for (let u = u_min; u <= u_max; u += step_u) {
         for (let v = v_min; v <= v_max; v += step_v) {
             let vertex1 = countVertex(u, v);
             let vertex2 = countVertex(u, v + 0.1);
             let vertex3 = countVertex(u + 0.1, v);
             let vertex4 = countVertex(u + 0.1, v + 0.1);
-
-            let Normal1 = countNormal(u, v);
-            let Normal2 = countNormal(u, v + 0.1);
-            let Normal3 = countNormal(u + 0.1, v);
-            let Normal4 = countNormal(u + 0.1, v + 0.1);
-
             vertexList.push(...vertex1, ...vertex2, ...vertex3, ...vertex3, ...vertex2, ...vertex4);
-            normalList.push(...Normal1, ...Normal2, ...Normal3, ...Normal3, ...Normal2, ...Normal4);
         }
     }
 
-    for (let v = v_min; v <= v_max; v += step_v) {
-        for (let u = u_min; u <=  u_max; u += step_u) {
-            let vertex1 = countVertex(u, v);
-            let vertex2 = countVertex(u, v + 0.1);
-            let vertex3 = countVertex(u + 0.1, v);
-            let vertex4 = countVertex(u + 0.1, v + 0.1);
-
-            let Normal1 = countNormal(u, v);
-            let Normal2 = countNormal(u, v + 0.1);
-            let Normal3 = countNormal(u + 0.1, v);
-            let Normal4 = countNormal(u + 0.1, v + 0.1);
-
-            vertexList.push(...vertex1, ...vertex2, ...vertex3, ...vertex3, ...vertex2, ...vertex4);
-            normalList.push(...Normal1, ...Normal2, ...Normal3, ...Normal3, ...Normal2, ...Normal4);
-        }
-    }
-
-    return {vertices: vertexList, normals: normalList};
+    return { vertices: vertexList };
 }
+
+function map(val, f1, t1, f2, t2) {
+    let m = (val - f1) * (t2 - f2) / (t1 - f1) + f2;
+    return Math.min(Math.max(m, f2), t2);
+}
+
+function CreateSurfaceTextureData() {
+    let vertexTextureList = [];
+    const INC = 0.01
+    for (let u = u_min; u <= u_max; u += step_u) {
+        for (let v = v_min; v <= v_max; v += step_v) {
+            let u1 = map(u, 0, u_max, 0, 1)
+            let v1 = map(v, 0, v_max, 0, 1)
+            vertexTextureList.push(u1, v1)
+            u1 = map(u + INC, 0, u_max, 0, 1)
+            vertexTextureList.push(u1, v1)
+            u1 = map(u, 0, u_max, 0, 1)
+            v1 = map(v + INC, 0, v_max, 0, 1)
+            vertexTextureList.push(u1, v1)
+            u1 = map(u + INC, 0, u_max, 0, 1)
+            v1 = map(v, 0, v_max, 0, 1)
+            vertexTextureList.push(u1, v1)
+            v1 = map(v + INC, 0, v_max, 0, 1)
+            vertexTextureList.push(u1, v1)
+            u1 = map(u, 0, u_max, 0, 1)
+            v1 = map(v + INC, 0, v_max, 0, 1)
+            vertexTextureList.push(u1, v1)
+        }
+    }
+    return vertexTextureList;
+}
+
+
+
+function CreateSphereSurface() {
+    let vertexList = [];
+    let step = 0.01;
+    let radius = 0.1;
+    const getSphereVertex = (u, v) =>{
+        return {
+            x: sphereCenter[0] + radius * Math.cos(u) * Math.sin(v),
+            y: sphereCenter[1] + radius * Math.sin(u) * Math.sin(v),
+            z: sphereCenter[2] + radius * Math.cos(v)
+        }
+    }
+    for (let u = 0; u < Math.PI * 2; u += step) {
+        for (let v = 0; v < Math.PI; v += step) {
+            let v1 = getSphereVertex(u, v);
+            let v2 = getSphereVertex(u + step, v);
+            let v3 = getSphereVertex(u, v + step);
+            let v4 = getSphereVertex(u + step, v + step);
+
+            vertexList.push(v1.x, v1.y, v1.z);
+            vertexList.push(v2.x, v2.y, v2.z);
+            vertexList.push(v3.x, v3.y, v3.z);
+            vertexList.push(v3.x, v3.y, v3.z);
+            vertexList.push(v2.x, v2.y, v2.z);
+            vertexList.push(v4.x, v4.y, v4.z);
+        }
+    }
+
+    return { vertices: vertexList };
+}
+
+
+
+function LoadTexture() {
+    let texture = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+
+    const image = new Image();
+    image.crossOrigin = 'anonymus';
+
+    image.src = "texture.jpeg";
+    image.onload = () => {
+        gl.bindTexture(gl.TEXTURE_2D, texture);
+        gl.texImage2D(
+            gl.TEXTURE_2D,
+            0,
+            gl.RGBA,
+            gl.RGBA,
+            gl.UNSIGNED_BYTE,
+            image
+        );
+        draw()
+    }
+}
+
 
 /* Initialize the WebGL context. Called from init() */
 function initGL() {
@@ -214,20 +248,27 @@ function initGL() {
     shProgram.Use();
 
     shProgram.iAttribVertex = gl.getAttribLocation(prog, "vertex");
-    shProgram.iAttribNormal = gl.getAttribLocation(prog, "normal");
+    shProgram.iAttribVertexTexture = gl.getAttribLocation(prog, "vertexTexture");
     shProgram.iModelViewProjectionMatrix = gl.getUniformLocation(prog, "ModelViewProjectionMatrix");
-    shProgram.iNormalMatrix = gl.getUniformLocation(prog, "NormalMatrix");
-    shProgram.iColor = gl.getUniformLocation(prog, "color");
+    shProgram.iTMU = gl.getUniformLocation(prog, 'TMU');
+    shProgram.iUserPoint = gl.getUniformLocation(prog, 'userPoint');
+    shProgram.iAngle = gl.getUniformLocation(prog, 'rotate');
+    shProgram.iTranslateSphere = gl.getUniformLocation(prog, 'translateSphere');
+    shProgram.iB = gl.getUniformLocation(prog, 'b');
 
+    LoadTexture()
     surface = new Model('Surface');
     surface.BufferData(CreateSurfaceData());
+    surface.TextureBufferData(CreateSurfaceTextureData());
+    sphere = new Model('Sphere');
+    sphere.BufferData(CreateSphereSurface());
 
     gl.enable(gl.DEPTH_TEST);
 }
 
 
 /* Creates a program for use in the WebGL context gl, and returns the
- * identifier for that program.  If an error occurs while compiling or
+ * identifi er for that program.  If an error occurs while compiling or
  * linking the program, an exception of type Error is thrown.  The error
  * string contains the compilation or linking error.  If no error occurs,
  * the program identifier is the return value of the function.
@@ -263,6 +304,9 @@ function createProgram(gl, vShader, fShader) {
  */
 function init() {
     let canvas;
+    userPoint = { u: 0.0, v: 0.0 }
+    sphereCenter = countVertex(userPoint.u,userPoint.v);
+    angle = 0.0;
     try {
         canvas = document.getElementById("webglcanvas");
         gl = canvas.getContext("webgl");
@@ -286,5 +330,34 @@ function init() {
 
     spaceball = new TrackballRotator(canvas, draw, 0);
 
+    draw();
+}
+
+// onmousemove = (e) => {
+//     angle = map(e.clientX, 0, window.outerWidth, 0, 2 * Math.PI);
+//     draw();
+// };
+function deg2rad(angle) {
+    return angle * Math.PI / 180;
+}
+
+function updateAngle (e) {
+    angle = deg2rad(e.target.value);
+    draw();
+}
+window.onkeydown = (e) => {
+    if (e.keyCode == 68) {
+        userPoint.u = Math.max(userPoint.u + 0.1, 2 * Math.PI * 2);
+    }
+    else if (e.keyCode == 65) {
+        userPoint.u = Math.max(userPoint.u - 0.1, 0);
+    }
+    else if (e.keyCode == 87) {
+        userPoint.v = Math.max(userPoint.v + 0.1, 2);
+    }
+    else if (e.keyCode == 83) {
+        userPoint.v = Math.max(userPoint.v - 0.1, 0);
+    }
+    CreateSphereSurface();
     draw();
 }

@@ -3,5 +3,6 @@
         "server": "pdb",
         "ns": "USER",
         "active": true
-    }
+    },
+    "liveServer.settings.port": 5501
 }
