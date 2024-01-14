@@ -20,10 +20,15 @@ let v_max = 2;
 let step_v = 0.1;
 let step_u = 0.1;
 
-const countX = (u, v) => ((a + b * Math.sin(n * (u))) * Math.cos((u)) - v * Math.sin((u))) / 4;
-const countY = (u, v) => ((a + b * Math.sin(n * (u))) * Math.sin((u)) + v * Math.cos((u))) / 4;
-const countZ = (u) => (b * Math.cos(n * (u))) / 4;
+const countX = (u, v) => ((a + b * Math.sin(n * (u))) * Math.cos((u)) - v * Math.sin((u))) ;
+const countY = (u, v) => ((a + b * Math.sin(n * (u))) * Math.sin((u)) + v * Math.cos((u))) ;
+const countZ = (u) => (b * Math.cos(n * (u))) ;
 const countVertex = (u, v) => [countX(u, v), countY(u, v), countZ(u)];
+const map = (val, fromRangeStart, fromRangeEnd, toRangeStart, toRangeEnd) =>
+    Math.min(Math.max( (val - fromRangeStart) * (toRangeEnd - toRangeStart) /   
+                        (fromRangeEnd - fromRangeStart) + toRangeStart, toRangeStart), 
+            toRangeEnd);
+
 
 
 // Constructor
@@ -36,39 +41,37 @@ function Model(name) {
     this.count = 0;
     this.textureCount = 0;
 
-    this.BufferData = function (data) {
+    this.BufferData = function (vertices,verticesTexture) {
 
         gl.bindBuffer(gl.ARRAY_BUFFER, this.iVertexBuffer);
-        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(data.vertices), gl.STREAM_DRAW);
-        this.count = data.vertices.length / 3;
-
-    }
-
-    this.TextureBufferData = function (vertices) {
-
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.iVertexTextureBuffer);
         gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STREAM_DRAW);
 
-        this.textureCount = vertices.length / 2;
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.iVertexTextureBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(verticesTexture), gl.STREAM_DRAW);
+        this.count = vertices.length / 3;
     }
 
     this.Draw = function () {
         gl.bindBuffer(gl.ARRAY_BUFFER, this.iVertexBuffer);
         gl.vertexAttribPointer(shProgram.iAttribVertex, 3, gl.FLOAT, false, 0, 0);
         gl.enableVertexAttribArray(shProgram.iAttribVertex);
-
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.iVertexTextureBuffer);
+    
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.iVertexTextureBuffer); // Use the correct buffer
         gl.vertexAttribPointer(shProgram.iAttribVertexTexture, 2, gl.FLOAT, false, 0, 0);
         gl.enableVertexAttribArray(shProgram.iAttribVertexTexture);
-
-        gl.drawArrays(gl.TRIANGLE_STRIP, 0, this.count);
+    
+        gl.drawArrays(gl.TRIANGLES, 0, this.count);
     }
-
-
+    
     this.DrawSphere = function () {
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.iVertexBuffer);
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.iVertexBuffer); // Use the correct buffer
         gl.vertexAttribPointer(shProgram.iAttribVertex, 3, gl.FLOAT, false, 0, 0);
         gl.enableVertexAttribArray(shProgram.iAttribVertex);
+    
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.iVertexTextureBuffer); // Use the correct buffer
+        gl.vertexAttribPointer(shProgram.iAttribVertexTexture, 2, gl.FLOAT, false, 0, 0);
+        gl.enableVertexAttribArray(shProgram.iAttribVertexTexture);
+    
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, this.count);
     }
 }
@@ -102,7 +105,7 @@ function ShaderProgram(name, program) {
  * way to draw with WebGL.  Here, the geometry is so simple that it doesn't matter.)
  */
 function draw() {
-    gl.clearColor(1., 1., 1., 1);
+    gl.clearColor(0,0,0,1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
     let projection = m4.orthographic(-5, 5, -5, 5, 0, 25);
@@ -120,15 +123,15 @@ function draw() {
     gl.uniformMatrix4fv(shProgram.iModelViewProjectionMatrix, false, modelViewProjection);
 
     gl.uniform1i(shProgram.iTMU, 0);
-    gl.uniform2fv(shProgram.iUserPoint, [userPoint.u, userPoint.v]);
+    gl.uniform2fv(shProgram.iUserPoint, [userPoint.x, userPoint.y]);
     gl.uniform1f(shProgram.iAngle, angle);
     gl.uniform1f(shProgram.iB, -1);
 
     gl.uniform3fv(shProgram.iTranslateSphere, [-0., -0., -0.])
     surface.Draw();
 
-    let translate = countVertex(userPoint.u, userPoint.v)
-    gl.uniform3fv(shProgram.iTranslateSphere, [translate[0], translate[1], translate[2]])
+    let translate = countVertex(userPoint.x, userPoint.y)
+    gl.uniform3fv(shProgram.iTranslateSphere, translate);
     gl.uniform1f(shProgram.iB, 1);
     sphere.DrawSphere();
 
@@ -146,56 +149,52 @@ function CreateSurfaceData() {
             vertexList.push(...vertex1, ...vertex2, ...vertex3, ...vertex3, ...vertex2, ...vertex4);
         }
     }
-
-    return { vertices: vertexList };
+    var textureData = CreateSurfaceTextureData();
+    return [vertexList,textureData];
 }
 
-function map(val, f1, t1, f2, t2) {
-    let m = (val - f1) * (t2 - f2) / (t1 - f1) + f2;
-    return Math.min(Math.max(m, f2), t2);
-}
+
 
 function CreateSurfaceTextureData() {
     let vertexTextureList = [];
-    const INC = 0.01
+    
     for (let u = u_min; u <= u_max; u += step_u) {
         for (let v = v_min; v <= v_max; v += step_v) {
             let u1 = map(u, 0, u_max, 0, 1)
             let v1 = map(v, 0, v_max, 0, 1)
             vertexTextureList.push(u1, v1)
-            u1 = map(u + INC, 0, u_max, 0, 1)
+            u1 = map(u + 0.1, 0, u_max, 0, 1)
             vertexTextureList.push(u1, v1)
             u1 = map(u, 0, u_max, 0, 1)
-            v1 = map(v + INC, 0, v_max, 0, 1)
+            v1 = map(v + 0.1, 0, v_max, 0, 1)
             vertexTextureList.push(u1, v1)
-            u1 = map(u + INC, 0, u_max, 0, 1)
+            u1 = map(u + 0.1, 0, u_max, 0, 1)
             v1 = map(v, 0, v_max, 0, 1)
             vertexTextureList.push(u1, v1)
-            v1 = map(v + INC, 0, v_max, 0, 1)
+            v1 = map(v + 0.1, 0, v_max, 0, 1)
             vertexTextureList.push(u1, v1)
             u1 = map(u, 0, u_max, 0, 1)
-            v1 = map(v + INC, 0, v_max, 0, 1)
+            v1 = map(v + 0.1, 0, v_max, 0, 1)
             vertexTextureList.push(u1, v1)
         }
     }
     return vertexTextureList;
 }
 
-
-
 function CreateSphereSurface() {
     let vertexList = [];
-    let step = 0.01;
+    let step = 0.1;
     let radius = 0.1;
     const getSphereVertex = (u, v) =>{
         return {
-            x: sphereCenter[0] + radius * Math.cos(u) * Math.sin(v),
-            y: sphereCenter[1] + radius * Math.sin(u) * Math.sin(v),
-            z: sphereCenter[2] + radius * Math.cos(v)
+            x: radius * Math.cos(u) * Math.sin(v),
+            y: radius * Math.sin(u) * Math.sin(v),
+            z: radius * Math.cos(v)
         }
-    }
-    for (let u = 0; u < Math.PI * 2; u += step) {
-        for (let v = 0; v < Math.PI; v += step) {
+    };
+
+    for (let u = 0; u <= Math.PI; u += step) {
+        for (let v = 0; v <= Math.PI * 2; v += step) {
             let v1 = getSphereVertex(u, v);
             let v2 = getSphereVertex(u + step, v);
             let v3 = getSphereVertex(u, v + step);
@@ -209,8 +208,7 @@ function CreateSphereSurface() {
             vertexList.push(v4.x, v4.y, v4.z);
         }
     }
-
-    return { vertices: vertexList };
+    return [vertexList,vertexList];
 }
 
 
@@ -252,16 +250,15 @@ function initGL() {
     shProgram.iModelViewProjectionMatrix = gl.getUniformLocation(prog, "ModelViewProjectionMatrix");
     shProgram.iTMU = gl.getUniformLocation(prog, 'TMU');
     shProgram.iUserPoint = gl.getUniformLocation(prog, 'userPoint');
-    shProgram.iAngle = gl.getUniformLocation(prog, 'rotate');
+    shProgram.iAngle = gl.getUniformLocation(prog, 'angle');
     shProgram.iTranslateSphere = gl.getUniformLocation(prog, 'translateSphere');
     shProgram.iB = gl.getUniformLocation(prog, 'b');
 
     LoadTexture()
     surface = new Model('Surface');
-    surface.BufferData(CreateSurfaceData());
-    surface.TextureBufferData(CreateSurfaceTextureData());
+    surface.BufferData(...CreateSurfaceData());
     sphere = new Model('Sphere');
-    sphere.BufferData(CreateSphereSurface());
+    sphere.BufferData(...CreateSphereSurface());
 
     gl.enable(gl.DEPTH_TEST);
 }
@@ -304,8 +301,8 @@ function createProgram(gl, vShader, fShader) {
  */
 function init() {
     let canvas;
-    userPoint = { u: 0.0, v: 0.0 }
-    sphereCenter = countVertex(userPoint.u,userPoint.v);
+    userPoint = { x: 0.0, y: 0.0 }
+    sphereCenter = countVertex(userPoint.x,userPoint.y);
     angle = 0.0;
     try {
         canvas = document.getElementById("webglcanvas");
@@ -333,10 +330,6 @@ function init() {
     draw();
 }
 
-// onmousemove = (e) => {
-//     angle = map(e.clientX, 0, window.outerWidth, 0, 2 * Math.PI);
-//     draw();
-// };
 function deg2rad(angle) {
     return angle * Math.PI / 180;
 }
@@ -347,16 +340,16 @@ function updateAngle (e) {
 }
 window.onkeydown = (e) => {
     if (e.keyCode == 68) {
-        userPoint.u = Math.max(userPoint.u + 0.1, 2 * Math.PI * 2);
+        userPoint.x = Math.min(userPoint.x + 0.1,  100);
     }
     else if (e.keyCode == 65) {
-        userPoint.u = Math.max(userPoint.u - 0.1, 0);
+        userPoint.x = Math.max(userPoint.x - 0.1, -100);
     }
     else if (e.keyCode == 87) {
-        userPoint.v = Math.max(userPoint.v + 0.1, 2);
+        userPoint.y= Math.min(userPoint.y + 0.1, v_max);
     }
     else if (e.keyCode == 83) {
-        userPoint.v = Math.max(userPoint.v - 0.1, 0);
+        userPoint.y = Math.max(userPoint.y - 0.1, v_min);
     }
     CreateSphereSurface();
     draw();
